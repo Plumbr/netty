@@ -56,6 +56,20 @@
     <tag>HEAD</tag>
   </scm>
 
+<distributionManagement>
+    <repository>
+        <id>plumbr</id>
+        <name>plumbr-releases</name>
+        <url>http://plumbr.artifactoryonline.com/plumbr/libs-snapshots-local</url>
+    </repository>
+    <snapshotRepository>
+        <id>plumbr</id>
+        <name>plumbr-snapshots</name>
+        <url>http://plumbr.artifactoryonline.com/plumbr/libs-snapshots-local</url>
+    </snapshotRepository>
+</distributionManagement>
+  
+
   <developers>
     <developer>
       <id>netty.io</id>
