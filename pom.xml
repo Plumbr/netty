@@ -26,7 +26,7 @@
   <groupId>io.netty</groupId>
   <artifactId>netty-parent</artifactId>
   <packaging>pom</packaging>
-  <version>4.1.0.Beta4-SNAPSHOT</version>
+  <version>4.1.0.Beta4.Plumbr-SNAPSHOT</version>
 
   <name>Netty</name>
   <url>http://netty.io/</url>
@@ -56,6 +56,19 @@
     <tag>HEAD</tag>
   </scm>
 
+<distributionManagement>
+    <repository>
+        <id>plumbr</id>
+        <name>plumbr-releases</name>
+        <url>http://plumbr.artifactoryonline.com/plumbr/libs-snapshots-local</url>
+    </repository>
+    <snapshotRepository>
+        <id>plumbr</id>
+        <name>plumbr-snapshots</name>
+        <url>http://plumbr.artifactoryonline.com/plumbr/libs-snapshots-local</url>
+    </snapshotRepository>
+</distributionManagement>
+  
   <developers>
     <developer>
       <id>netty.io</id>
@@ -472,7 +485,7 @@
     <module>handler</module>
     <module>handler-proxy</module>
     <module>example</module>
-    <module>testsuite</module>
+    <!--<module>testsuite</module>-->
     <module>microbench</module>
     <module>all</module>
     <module>tarball</module>
