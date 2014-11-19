@@ -114,7 +114,7 @@ public final class HttpProxyHandler extends ProxyHandler {
         InetSocketAddress raddr = destinationAddress();
         String rhost;
         if (raddr.isUnresolved()) {
-            rhost = raddr.getHostString();
+            rhost = raddr.getHostName();
         } else {
             rhost = raddr.getAddress().getHostAddress();
         }
@@ -127,7 +127,7 @@ public final class HttpProxyHandler extends ProxyHandler {
         SocketAddress proxyAddress = proxyAddress();
         if (proxyAddress instanceof InetSocketAddress) {
             InetSocketAddress hostAddr = (InetSocketAddress) proxyAddress;
-            req.headers().set(HttpHeaderNames.HOST, hostAddr.getHostString() + ':' + hostAddr.getPort());
+            req.headers().set(HttpHeaderNames.HOST, hostAddr.getHostName() + ':' + hostAddr.getPort());
         }
 
         if (authorization != null) {

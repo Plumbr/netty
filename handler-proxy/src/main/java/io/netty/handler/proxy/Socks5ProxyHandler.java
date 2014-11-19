@@ -189,7 +189,7 @@ public final class Socks5ProxyHandler extends ProxyHandler {
         String rhost;
         if (raddr.isUnresolved()) {
             addrType = Socks5AddressType.DOMAIN;
-            rhost = raddr.getHostString();
+            rhost = raddr.getHostName();
         } else {
             rhost = raddr.getAddress().getHostAddress();
             if (NetUtil.isValidIpV4Address(rhost)) {

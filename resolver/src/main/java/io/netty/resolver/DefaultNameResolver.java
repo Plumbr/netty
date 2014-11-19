@@ -43,7 +43,7 @@ public class DefaultNameResolver extends SimpleNameResolver<InetSocketAddress> {
         try {
             promise.setSuccess(
                     new InetSocketAddress(
-                            InetAddress.getByName(unresolvedAddress.getHostString()),
+                            InetAddress.getByName(unresolvedAddress.getHostName()),
                             unresolvedAddress.getPort()));
         } catch (UnknownHostException e) {
             promise.setFailure(e);

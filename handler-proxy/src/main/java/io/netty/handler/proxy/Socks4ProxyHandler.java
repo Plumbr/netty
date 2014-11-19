@@ -95,7 +95,7 @@ public final class Socks4ProxyHandler extends ProxyHandler {
         InetSocketAddress raddr = destinationAddress();
         String rhost;
         if (raddr.isUnresolved()) {
-            rhost = raddr.getHostString();
+            rhost = raddr.getHostName();
         } else {
             rhost = raddr.getAddress().getHostAddress();
         }

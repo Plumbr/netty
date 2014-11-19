@@ -149,7 +149,7 @@ final class Socks5ProxyServer extends ProxyServer {
 
             Socks5CmdResponse res;
             boolean sendGreeting = false;
-            if (!req.host().equals(destination.getHostString()) ||
+            if (!req.host().equals(destination.getHostName()) ||
                        req.port() != destination.getPort()) {
                 res = new Socks5CmdResponse(Socks5CmdStatus.FORBIDDEN, Socks5AddressType.IPv4);
             } else {

@@ -145,7 +145,7 @@ final class HttpProxyServer extends ProxyServer {
             if (!authenticate(ctx, req)) {
                 res = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.UNAUTHORIZED);
                 res.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
-            } else if (!req.uri().equals(destination.getHostString() + ':' + destination.getPort())) {
+            } else if (!req.uri().equals(destination.getHostName() + ':' + destination.getPort())) {
                 res = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.FORBIDDEN);
                 res.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
             } else {

@@ -640,7 +640,7 @@ public class DnsNameResolver extends SimpleNameResolver<InetSocketAddress> {
 
     @Override
     protected void doResolve(InetSocketAddress unresolvedAddress, Promise<InetSocketAddress> promise) throws Exception {
-        final String hostname = IDN.toASCII(unresolvedAddress.getHostString());
+        final String hostname = IDN.toASCII(unresolvedAddress.getHostName());
         final int port = unresolvedAddress.getPort();
 
         final DnsNameResolverContext ctx = new DnsNameResolverContext(this, hostname, port, promise);

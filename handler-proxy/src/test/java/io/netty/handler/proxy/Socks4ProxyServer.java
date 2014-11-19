@@ -119,7 +119,7 @@ final class Socks4ProxyServer extends ProxyServer {
             boolean sendGreeting = false;
             if (!authzSuccess) {
                 res = new Socks4CmdResponse(Socks4CmdStatus.IDENTD_AUTH_FAILURE);
-            } else if (!req.host().equals(destination.getHostString()) ||
+            } else if (!req.host().equals(destination.getHostName()) ||
                        req.port() != destination.getPort()) {
                 res = new Socks4CmdResponse(Socks4CmdStatus.REJECTED_OR_FAILED);
             } else {
