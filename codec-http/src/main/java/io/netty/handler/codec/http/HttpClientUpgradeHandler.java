@@ -16,7 +16,7 @@ package io.netty.handler.codec.http;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
-import io.netty.handler.codec.AsciiString;
+import io.netty.util.AsciiString;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -182,7 +182,7 @@ public class HttpClientUpgradeHandler extends HttpObjectAggregator {
                 throw new IllegalStateException(
                         "Switching Protocols response missing UPGRADE header");
             }
-            if (AsciiString.equalsIgnoreCase(upgradeCodec.protocol(), upgradeHeader)) {
+            if (!AsciiString.equalsIgnoreCase(upgradeCodec.protocol(), upgradeHeader)) {
                 throw new IllegalStateException(
                         "Switching Protocols response with unexpected UPGRADE protocol: "
                                 + upgradeHeader);

@@ -15,10 +15,10 @@
  */
 package io.netty.handler.codec.spdy;
 
-import io.netty.handler.codec.AsciiString;
 import io.netty.handler.codec.DefaultTextHeaders;
 import io.netty.handler.codec.Headers;
 import io.netty.handler.codec.TextHeaders;
+import io.netty.util.AsciiString;
 
 import java.util.Locale;
 
@@ -141,6 +141,12 @@ public class DefaultSpdyHeaders extends DefaultTextHeaders implements SpdyHeader
     }
 
     @Override
+    public SpdyHeaders addTimeMillis(CharSequence name, long value) {
+        super.addTimeMillis(name, value);
+        return this;
+    }
+
+    @Override
     public SpdyHeaders add(TextHeaders headers) {
         super.add(headers);
         return this;
@@ -227,6 +233,12 @@ public class DefaultSpdyHeaders extends DefaultTextHeaders implements SpdyHeader
     @Override
     public SpdyHeaders setDouble(CharSequence name, double value) {
         super.setDouble(name, value);
+        return this;
+    }
+
+    @Override
+    public SpdyHeaders setTimeMillis(CharSequence name, long value) {
+        super.setTimeMillis(name, value);
         return this;
     }
 

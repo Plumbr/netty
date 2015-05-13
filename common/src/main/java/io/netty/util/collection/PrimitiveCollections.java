@@ -68,7 +68,7 @@ public final class PrimitiveCollections {
 
         @Override
         public Object remove(int key) {
-            throw new UnsupportedOperationException("remove");
+            return null;
         }
 
         @Override
@@ -104,6 +104,11 @@ public final class PrimitiveCollections {
         @Override
         public int[] keys() {
             return EmptyArrays.EMPTY_INTS;
+        }
+
+        @Override
+        public Object[] values(Class<Object> clazz) {
+            return EmptyArrays.EMPTY_OBJECTS;
         }
 
         @Override
@@ -183,6 +188,11 @@ public final class PrimitiveCollections {
         @Override
         public int[] keys() {
             return map.keys();
+        }
+
+        @Override
+        public V[] values(Class<V> clazz) {
+            return map.values(clazz);
         }
 
         @Override

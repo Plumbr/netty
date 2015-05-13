@@ -17,14 +17,17 @@
 package io.netty.resolver.dns;
 
 import io.netty.buffer.Unpooled;
+import io.netty.channel.AddressedEnvelope;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.socket.DatagramChannel;
+import io.netty.handler.codec.dns.DatagramDnsQuery;
+import io.netty.handler.codec.dns.DefaultDnsRawRecord;
+import io.netty.handler.codec.dns.DnsSection;
 import io.netty.handler.codec.dns.DnsQuery;
 import io.netty.handler.codec.dns.DnsQuestion;
-import io.netty.handler.codec.dns.DnsResource;
+import io.netty.handler.codec.dns.DnsRecord;
+import io.netty.handler.codec.dns.DnsRecordType;
 import io.netty.handler.codec.dns.DnsResponse;
-import io.netty.handler.codec.dns.DnsType;
 import io.netty.resolver.dns.DnsNameResolver.DnsCacheEntry;
 import io.netty.util.concurrent.Promise;
 import io.netty.util.concurrent.ScheduledFuture;
@@ -44,10 +47,10 @@ final class DnsQueryContext {
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(DnsQueryContext.class);
 
     private final DnsNameResolver parent;
-    private final Promise<DnsResponse> promise;
+    private final Promise<AddressedEnvelope<DnsResponse, InetSocketAddress>> promise;
     private final int id;
     private final DnsQuestion question;
-    private final DnsResource optResource;
+    private final DnsRecord optResource;
     private final Iterator<InetSocketAddress> nameServerAddresses;
 
     private final boolean recursionDesired;
@@ -58,7 +61,7 @@ final class DnsQueryContext {
 
     DnsQueryContext(DnsNameResolver parent,
                     Iterable<InetSocketAddress> nameServerAddresses,
-                    DnsQuestion question, Promise<DnsResponse> promise) {
+                    DnsQuestion question, Promise<AddressedEnvelope<DnsResponse, InetSocketAddress>> promise) {
 
         this.parent = parent;
         this.promise = promise;
@@ -68,7 +71,8 @@ final class DnsQueryContext {
         recursionDesired = parent.isRecursionDesired();
         maxTries = parent.maxTriesPerQuery();
         remainingTries = maxTries;
-        optResource = new DnsResource("", DnsType.OPT, parent.maxPayloadSizeClass(), 0, Unpooled.EMPTY_BUFFER);
+        optResource = new DefaultDnsRawRecord(
+                StringUtil.EMPTY_STRING, DnsRecordType.OPT, parent.maxPayloadSize(), 0, Unpooled.EMPTY_BUFFER);
 
         this.nameServerAddresses = nameServerAddresses.iterator();
     }
@@ -90,7 +94,7 @@ final class DnsQueryContext {
         }
     }
 
-    Promise<DnsResponse> promise() {
+    Promise<AddressedEnvelope<DnsResponse, InetSocketAddress>> promise() {
         return promise;
     }
 
@@ -126,18 +130,37 @@ final class DnsQueryContext {
         remainingTries --;
 
         final InetSocketAddress nameServerAddr = nameServerAddresses.next();
-        final DnsQuery query = new DnsQuery(id, nameServerAddr);
-        query.addQuestion(question);
-        query.header().setRecursionDesired(recursionDesired);
-        query.addAdditionalResource(optResource);
-
-        final DatagramChannel ch = parent.ch;
+        final DatagramDnsQuery query = new DatagramDnsQuery(null, nameServerAddr, id);
+        query.setRecursionDesired(recursionDesired);
+        query.setRecord(DnsSection.QUESTION, question);
+        query.setRecord(DnsSection.ADDITIONAL, optResource);
 
         if (logger.isDebugEnabled()) {
-            logger.debug("{} WRITE: [{}: {}], {}", ch, id, nameServerAddr, question);
+            logger.debug("{} WRITE: [{}: {}], {}", parent.ch, id, nameServerAddr, question);
         }
 
-        final ChannelFuture writeFuture = ch.writeAndFlush(query);
+        sendQuery(query, nameServerAddr);
+    }
+
+    private void sendQuery(final DnsQuery query, final InetSocketAddress nameServerAddr) {
+        if (parent.bindFuture.isDone()) {
+            writeQuery(query, nameServerAddr);
+        } else {
+            parent.bindFuture.addListener(new ChannelFutureListener() {
+                @Override
+                public void operationComplete(ChannelFuture future) throws Exception {
+                    if (future.isSuccess()) {
+                        writeQuery(query, nameServerAddr);
+                    } else {
+                        promise.tryFailure(future.cause());
+                    }
+                 }
+            });
+        }
+    }
+
+    private void writeQuery(final DnsQuery query, final InetSocketAddress nameServerAddr) {
+        final ChannelFuture writeFuture = parent.ch.writeAndFlush(query);
         if (writeFuture.isDone()) {
             onQueryWriteCompletion(writeFuture, nameServerAddr);
         } else {

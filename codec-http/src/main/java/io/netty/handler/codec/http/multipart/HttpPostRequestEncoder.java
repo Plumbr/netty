@@ -513,7 +513,7 @@ public class HttpPostRequestEncoder implements ChunkedInput<HttpContent> {
                 internal.addValue(HttpHeaderNames.CONTENT_TYPE + ": " +
                         HttpPostBodyUtil.DEFAULT_TEXT_CONTENT_TYPE + "; " +
                         HttpHeaderValues.CHARSET + '='
-                        + localcharset + "\r\n");
+                        + localcharset.name() + "\r\n");
             }
             // CRLF between body header and data
             internal.addValue("\r\n");
@@ -581,42 +581,42 @@ public class HttpPostRequestEncoder implements ChunkedInput<HttpContent> {
                     globalBodySize -= pastAttribute.size();
                     StringBuilder replacement = new StringBuilder(
                             139 + multipartDataBoundary.length() + multipartMixedBoundary.length() * 2 +
-                                    fileUpload.getFilename().length() + fileUpload.getName().length());
+                                    fileUpload.getFilename().length() + fileUpload.getName().length())
 
-                    replacement.append("--");
-                    replacement.append(multipartDataBoundary);
-                    replacement.append("\r\n");
+                        .append("--")
+                        .append(multipartDataBoundary)
+                        .append("\r\n")
 
-                    replacement.append(HttpHeaderNames.CONTENT_DISPOSITION);
-                    replacement.append(": ");
-                    replacement.append(HttpHeaderValues.FORM_DATA);
-                    replacement.append("; ");
-                    replacement.append(HttpHeaderValues.NAME);
-                    replacement.append("=\"");
-                    replacement.append(fileUpload.getName());
-                    replacement.append("\"\r\n");
+                        .append(HttpHeaderNames.CONTENT_DISPOSITION)
+                        .append(": ")
+                        .append(HttpHeaderValues.FORM_DATA)
+                        .append("; ")
+                        .append(HttpHeaderValues.NAME)
+                        .append("=\"")
+                        .append(fileUpload.getName())
+                        .append("\"\r\n")
 
-                    replacement.append(HttpHeaderNames.CONTENT_TYPE);
-                    replacement.append(": ");
-                    replacement.append(HttpHeaderValues.MULTIPART_MIXED);
-                    replacement.append("; ");
-                    replacement.append(HttpHeaderValues.BOUNDARY);
-                    replacement.append('=');
-                    replacement.append(multipartMixedBoundary);
-                    replacement.append("\r\n\r\n");
+                        .append(HttpHeaderNames.CONTENT_TYPE)
+                        .append(": ")
+                        .append(HttpHeaderValues.MULTIPART_MIXED)
+                        .append("; ")
+                        .append(HttpHeaderValues.BOUNDARY)
+                        .append('=')
+                        .append(multipartMixedBoundary)
+                        .append("\r\n\r\n")
 
-                    replacement.append("--");
-                    replacement.append(multipartMixedBoundary);
-                    replacement.append("\r\n");
+                        .append("--")
+                        .append(multipartMixedBoundary)
+                        .append("\r\n")
 
-                    replacement.append(HttpHeaderNames.CONTENT_DISPOSITION);
-                    replacement.append(": ");
-                    replacement.append(HttpHeaderValues.ATTACHMENT);
-                    replacement.append("; ");
-                    replacement.append(HttpHeaderValues.FILENAME);
-                    replacement.append("=\"");
-                    replacement.append(fileUpload.getFilename());
-                    replacement.append("\"\r\n");
+                        .append(HttpHeaderNames.CONTENT_DISPOSITION)
+                        .append(": ")
+                        .append(HttpHeaderValues.ATTACHMENT)
+                        .append("; ")
+                        .append(HttpHeaderValues.FILENAME)
+                        .append("=\"")
+                        .append(fileUpload.getFilename())
+                        .append("\"\r\n");
 
                     pastAttribute.setValue(replacement.toString(), 1);
                     pastAttribute.setValue("", 2);
@@ -665,7 +665,7 @@ public class HttpPostRequestEncoder implements ChunkedInput<HttpContent> {
                 internal.addValue("\r\n" + HttpHeaderNames.CONTENT_TRANSFER_ENCODING + ": "
                         + HttpPostBodyUtil.TransferEncodingMechanism.BINARY.value() + "\r\n\r\n");
             } else if (fileUpload.getCharset() != null) {
-                internal.addValue("; " + HttpHeaderValues.CHARSET + '=' + fileUpload.getCharset() + "\r\n\r\n");
+                internal.addValue("; " + HttpHeaderValues.CHARSET + '=' + fileUpload.getCharset().name() + "\r\n\r\n");
             } else {
                 internal.addValue("\r\n\r\n");
             }
@@ -829,6 +829,7 @@ public class HttpPostRequestEncoder implements ChunkedInput<HttpContent> {
         int length = currentBuffer.readableBytes();
         if (length > HttpPostBodyUtil.chunkSize) {
             ByteBuf slice = currentBuffer.slice(currentBuffer.readerIndex(), HttpPostBodyUtil.chunkSize);
+            currentBuffer.retain();
             currentBuffer.skipBytes(HttpPostBodyUtil.chunkSize);
             return slice;
         } else {

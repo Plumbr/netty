@@ -30,7 +30,9 @@ import io.netty.handler.ssl.ApplicationProtocolConfig;
 import io.netty.handler.ssl.ApplicationProtocolConfig.Protocol;
 import io.netty.handler.ssl.ApplicationProtocolConfig.SelectedListenerFailureBehavior;
 import io.netty.handler.ssl.ApplicationProtocolConfig.SelectorFailureBehavior;
+import io.netty.handler.ssl.OpenSsl;
 import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.SslProvider;
 import io.netty.handler.ssl.SupportedCipherSuiteFilter;
 import io.netty.handler.ssl.util.SelfSignedCertificate;
@@ -42,26 +44,29 @@ import io.netty.handler.ssl.util.SelfSignedCertificate;
 public final class Http2Server {
 
     static final boolean SSL = System.getProperty("ssl") != null;
+
     static final int PORT = Integer.parseInt(System.getProperty("port", SSL? "8443" : "8080"));
 
     public static void main(String[] args) throws Exception {
         // Configure SSL.
         final SslContext sslCtx;
         if (SSL) {
+            SslProvider provider = OpenSsl.isAlpnSupported() ? SslProvider.OPENSSL : SslProvider.JDK;
             SelfSignedCertificate ssc = new SelfSignedCertificate();
-            sslCtx = SslContext.newServerContext(SslProvider.JDK,
-                    ssc.certificate(), ssc.privateKey(), null,
-                    Http2SecurityUtil.CIPHERS,
-                    /* NOTE: the following filter may not include all ciphers required by the HTTP/2 specification
-                     * Please refer to the HTTP/2 specification for cipher requirements. */
-                    SupportedCipherSuiteFilter.INSTANCE,
-                    new ApplicationProtocolConfig(
-                            Protocol.ALPN,
-                            SelectorFailureBehavior.FATAL_ALERT,
-                            SelectedListenerFailureBehavior.FATAL_ALERT,
-                            SelectedProtocol.HTTP_2.protocolName(),
-                            SelectedProtocol.HTTP_1_1.protocolName()),
-                    0, 0);
+            sslCtx = SslContextBuilder.forServer(ssc.certificate(), ssc.privateKey())
+                .sslProvider(provider)
+                /* NOTE: the cipher filter may not include all ciphers required by the HTTP/2 specification.
+                 * Please refer to the HTTP/2 specification for cipher requirements. */
+                .ciphers(Http2SecurityUtil.CIPHERS, SupportedCipherSuiteFilter.INSTANCE)
+                .applicationProtocolConfig(new ApplicationProtocolConfig(
+                    Protocol.ALPN,
+                    // NO_ADVERTISE is currently the only mode supported by both OpenSsl and JDK providers.
+                    SelectorFailureBehavior.NO_ADVERTISE,
+                    // ACCEPT is currently the only mode supported by both OpenSsl and JDK providers.
+                    SelectedListenerFailureBehavior.ACCEPT,
+                    SelectedProtocol.HTTP_2.protocolName(),
+                    SelectedProtocol.HTTP_1_1.protocolName()))
+                .build();
         } else {
             sslCtx = null;
         }

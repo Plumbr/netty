@@ -15,9 +15,11 @@
  */
 package io.netty.buffer;
 
+import io.netty.util.ByteProcessor;
 import io.netty.util.CharsetUtil;
 import io.netty.util.IllegalReferenceCountException;
 import io.netty.util.internal.ThreadLocalRandom;
+
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
@@ -1666,7 +1668,7 @@ public abstract class AbstractByteBufTest {
 
         final AtomicInteger lastIndex = new AtomicInteger();
         buffer.setIndex(CAPACITY / 4, CAPACITY * 3 / 4);
-        assertThat(buffer.forEachByte(new ByteBufProcessor() {
+        assertThat(buffer.forEachByte(new ByteProcessor() {
             int i = CAPACITY / 4;
 
             @Override
@@ -1689,7 +1691,7 @@ public abstract class AbstractByteBufTest {
         }
 
         final int stop = CAPACITY / 2;
-        assertThat(buffer.forEachByte(CAPACITY / 3, CAPACITY / 3, new ByteBufProcessor() {
+        assertThat(buffer.forEachByte(CAPACITY / 3, CAPACITY / 3, new ByteProcessor() {
             int i = CAPACITY / 3;
 
             @Override
@@ -1713,7 +1715,7 @@ public abstract class AbstractByteBufTest {
         }
 
         final AtomicInteger lastIndex = new AtomicInteger();
-        assertThat(buffer.forEachByteDesc(CAPACITY / 4, CAPACITY * 2 / 4, new ByteBufProcessor() {
+        assertThat(buffer.forEachByteDesc(CAPACITY / 4, CAPACITY * 2 / 4, new ByteProcessor() {
             int i = CAPACITY * 3 / 4 - 1;
 
             @Override
@@ -2377,22 +2379,22 @@ public abstract class AbstractByteBufTest {
 
     @Test(expected = IllegalReferenceCountException.class)
     public void testForEachByteAfterRelease() {
-        releasedBuffer().forEachByte(new TestByteBufProcessor());
+        releasedBuffer().forEachByte(new TestByteProcessor());
     }
 
     @Test(expected = IllegalReferenceCountException.class)
     public void testForEachByteAfterRelease1() {
-        releasedBuffer().forEachByte(0, 1, new TestByteBufProcessor());
+        releasedBuffer().forEachByte(0, 1, new TestByteProcessor());
     }
 
     @Test(expected = IllegalReferenceCountException.class)
     public void testForEachByteDescAfterRelease() {
-        releasedBuffer().forEachByteDesc(new TestByteBufProcessor());
+        releasedBuffer().forEachByteDesc(new TestByteProcessor());
     }
 
     @Test(expected = IllegalReferenceCountException.class)
     public void testForEachByteDescAfterRelease1() {
-        releasedBuffer().forEachByteDesc(0, 1, new TestByteBufProcessor());
+        releasedBuffer().forEachByteDesc(0, 1, new TestByteProcessor());
     }
 
     @Test(expected = IllegalReferenceCountException.class)
@@ -2430,6 +2432,48 @@ public abstract class AbstractByteBufTest {
         releasedBuffer().nioBuffers(0, 1);
     }
 
+    @Test
+    public void testArrayAfterRelease() {
+        ByteBuf buf = releasedBuffer();
+        if (buf.hasArray()) {
+            try {
+                buf.array();
+                fail();
+            } catch (IllegalReferenceCountException e) {
+                // expected
+            }
+        }
+    }
+
+    @Test
+    public void testMemoryAddressAfterRelease() {
+        ByteBuf buf = releasedBuffer();
+        if (buf.hasMemoryAddress()) {
+            try {
+                buf.memoryAddress();
+                fail();
+            } catch (IllegalReferenceCountException e) {
+                // expected
+            }
+        }
+    }
+
+    @Test
+    public void testSliceRelease() {
+        ByteBuf buf = newBuffer(8);
+        assertEquals(1, buf.refCnt());
+        assertTrue(buf.slice().release());
+        assertEquals(0, buf.refCnt());
+    }
+
+    @Test
+    public void testDuplicateRelease() {
+        ByteBuf buf = newBuffer(8);
+        assertEquals(1, buf.refCnt());
+        assertTrue(buf.duplicate().release());
+        assertEquals(0, buf.refCnt());
+    }
+
     // Test-case trying to reproduce:
     // https://github.com/netty/netty/issues/2843
     @Test
@@ -2442,6 +2486,16 @@ public abstract class AbstractByteBufTest {
     @Test
     public void testRefCnt2() throws Exception {
         testRefCnt0(true);
+    }
+
+    @Test
+    public void testEmptyNioBuffers() throws Exception {
+        ByteBuf buffer = releaseLater(newBuffer(8));
+        buffer.clear();
+        assertFalse(buffer.isReadable());
+        ByteBuffer[] nioBuffers = buffer.nioBuffers();
+        assertEquals(1, nioBuffers.length);
+        assertFalse(nioBuffers[0].hasRemaining());
     }
 
     private void testRefCnt0(final boolean parameter) throws Exception {
@@ -2595,7 +2649,7 @@ public abstract class AbstractByteBufTest {
         }
     }
 
-    private static final class TestByteBufProcessor implements ByteBufProcessor {
+    private static final class TestByteProcessor implements ByteProcessor {
         @Override
         public boolean process(byte value) throws Exception {
             return true;

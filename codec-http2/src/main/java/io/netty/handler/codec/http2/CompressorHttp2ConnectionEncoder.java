@@ -28,94 +28,78 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.ChannelPromiseAggregator;
 import io.netty.channel.embedded.EmbeddedChannel;
-import io.netty.handler.codec.AsciiString;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.compression.ZlibCodecFactory;
 import io.netty.handler.codec.compression.ZlibWrapper;
+import io.netty.util.ByteString;
 
 /**
- * A HTTP2 encoder that will compress data frames according to the {@code content-encoding} header for each stream.
- * The compression provided by this class will be applied to the data for the entire stream.
+ * A decorating HTTP2 encoder that will compress data frames according to the {@code content-encoding} header for each
+ * stream. The compression provided by this class will be applied to the data for the entire stream.
  */
-public class CompressorHttp2ConnectionEncoder extends DefaultHttp2ConnectionEncoder {
-    private static final Http2ConnectionAdapter CLEAN_UP_LISTENER = new Http2ConnectionAdapter() {
-        @Override
-        public void streamRemoved(Http2Stream stream) {
-            final EmbeddedChannel compressor = stream.compressor();
-            if (compressor != null) {
-                cleanup(stream, compressor);
-            }
-        }
-    };
+public class CompressorHttp2ConnectionEncoder extends DecoratingHttp2ConnectionEncoder {
+    public static final int DEFAULT_COMPRESSION_LEVEL = 6;
+    public static final int DEFAULT_WINDOW_BITS = 15;
+    public static final int DEFAULT_MEM_LEVEL = 8;
 
     private final int compressionLevel;
     private final int windowBits;
     private final int memLevel;
+    private final Http2Connection.PropertyKey propertyKey;
 
-    /**
-     * Builder for new instances of {@link CompressorHttp2ConnectionEncoder}
-     */
-    public static class Builder extends DefaultHttp2ConnectionEncoder.Builder {
-        protected int compressionLevel = 6;
-        protected int windowBits = 15;
-        protected int memLevel = 8;
-
-        public Builder compressionLevel(int compressionLevel) {
-            this.compressionLevel = compressionLevel;
-            return this;
-        }
-
-        public Builder windowBits(int windowBits) {
-            this.windowBits = windowBits;
-            return this;
-        }
-
-        public Builder memLevel(int memLevel) {
-            this.memLevel = memLevel;
-            return this;
-        }
-
-        @Override
-        public CompressorHttp2ConnectionEncoder build() {
-            return new CompressorHttp2ConnectionEncoder(this);
-        }
+    public CompressorHttp2ConnectionEncoder(Http2ConnectionEncoder delegate) {
+        this(delegate, DEFAULT_COMPRESSION_LEVEL, DEFAULT_WINDOW_BITS, DEFAULT_MEM_LEVEL);
     }
 
-    protected CompressorHttp2ConnectionEncoder(Builder builder) {
-        super(builder);
-        if (builder.compressionLevel < 0 || builder.compressionLevel > 9) {
-            throw new IllegalArgumentException("compressionLevel: " + builder.compressionLevel + " (expected: 0-9)");
+    public CompressorHttp2ConnectionEncoder(Http2ConnectionEncoder delegate, int compressionLevel, int windowBits,
+                                            int memLevel) {
+        super(delegate);
+        if (compressionLevel < 0 || compressionLevel > 9) {
+            throw new IllegalArgumentException("compressionLevel: " + compressionLevel + " (expected: 0-9)");
         }
-        if (builder.windowBits < 9 || builder.windowBits > 15) {
-            throw new IllegalArgumentException("windowBits: " + builder.windowBits + " (expected: 9-15)");
+        if (windowBits < 9 || windowBits > 15) {
+            throw new IllegalArgumentException("windowBits: " + windowBits + " (expected: 9-15)");
         }
-        if (builder.memLevel < 1 || builder.memLevel > 9) {
-            throw new IllegalArgumentException("memLevel: " + builder.memLevel + " (expected: 1-9)");
+        if (memLevel < 1 || memLevel > 9) {
+            throw new IllegalArgumentException("memLevel: " + memLevel + " (expected: 1-9)");
         }
-        compressionLevel = builder.compressionLevel;
-        windowBits = builder.windowBits;
-        memLevel = builder.memLevel;
+        this.compressionLevel = compressionLevel;
+        this.windowBits = windowBits;
+        this.memLevel = memLevel;
 
-        connection().addListener(CLEAN_UP_LISTENER);
+        propertyKey = connection().newKey();
+        connection().addListener(new Http2ConnectionAdapter() {
+            @Override
+            public void onStreamRemoved(Http2Stream stream) {
+                final EmbeddedChannel compressor = stream.getProperty(propertyKey);
+                if (compressor != null) {
+                    cleanup(stream, compressor);
+                }
+            }
+        });
     }
 
     @Override
     public ChannelFuture writeData(final ChannelHandlerContext ctx, final int streamId, ByteBuf data, int padding,
             final boolean endOfStream, ChannelPromise promise) {
         final Http2Stream stream = connection().stream(streamId);
-        final EmbeddedChannel compressor = stream == null ? null : stream.compressor();
-        if (compressor == null) {
+        final EmbeddedChannel channel = stream == null ? null : (EmbeddedChannel) stream.getProperty(propertyKey);
+        if (channel == null) {
             // The compressor may be null if no compatible encoding type was found in this stream's headers
             return super.writeData(ctx, streamId, data, padding, endOfStream, promise);
         }
 
         try {
-            // call retain here as it will call release after its written to the channel
-            compressor.writeOutbound(data.retain());
-            ByteBuf buf = nextReadableBuf(compressor);
+            // The channel will release the buffer after being written
+            channel.writeOutbound(data);
+            ByteBuf buf = nextReadableBuf(channel);
             if (buf == null) {
                 if (endOfStream) {
-                    return super.writeData(ctx, streamId, Unpooled.EMPTY_BUFFER, padding, endOfStream, promise);
+                    if (channel.finish()) {
+                        buf = nextReadableBuf(channel);
+                    }
+                    return super.writeData(ctx, streamId, buf == null ? Unpooled.EMPTY_BUFFER : buf, padding,
+                            true, promise);
                 }
                 // END_STREAM is not set and the assumption is data is still forthcoming.
                 promise.setSuccess();
@@ -123,23 +107,39 @@ public class CompressorHttp2ConnectionEncoder extends DefaultHttp2ConnectionEnco
             }
 
             ChannelPromiseAggregator aggregator = new ChannelPromiseAggregator(promise);
+            ChannelPromise bufPromise = ctx.newPromise();
+            aggregator.add(bufPromise);
             for (;;) {
-                final ByteBuf nextBuf = nextReadableBuf(compressor);
-                final boolean endOfStreamForBuf = nextBuf == null && endOfStream;
-                ChannelPromise newPromise = ctx.newPromise();
-                aggregator.add(newPromise);
+                ByteBuf nextBuf = nextReadableBuf(channel);
+                boolean compressedEndOfStream = nextBuf == null && endOfStream;
+                if (compressedEndOfStream && channel.finish()) {
+                    nextBuf = nextReadableBuf(channel);
+                    compressedEndOfStream = nextBuf == null;
+                }
 
-                super.writeData(ctx, streamId, buf, padding, endOfStreamForBuf, newPromise);
+                final ChannelPromise nextPromise;
+                if (nextBuf != null) {
+                    // We have to add the nextPromise to the aggregator before doing the current write. This is so
+                    // completing the current write before the next write is done won't complete the aggregate promise
+                    nextPromise = ctx.newPromise();
+                    aggregator.add(nextPromise);
+                } else {
+                    nextPromise = null;
+                }
+
+                super.writeData(ctx, streamId, buf, padding, compressedEndOfStream, bufPromise);
                 if (nextBuf == null) {
                     break;
                 }
 
+                padding = 0; // Padding is only communicated once on the first iteration
                 buf = nextBuf;
+                bufPromise = nextPromise;
             }
             return promise;
         } finally {
             if (endOfStream) {
-                cleanup(stream, compressor);
+                cleanup(stream, channel);
             }
         }
     }
@@ -169,11 +169,11 @@ public class CompressorHttp2ConnectionEncoder extends DefaultHttp2ConnectionEnco
      * (alternatively, you can throw a {@link Http2Exception} to block unknown encoding).
      * @throws Http2Exception If the specified encoding is not not supported and warrants an exception
      */
-    protected EmbeddedChannel newContentCompressor(AsciiString contentEncoding) throws Http2Exception {
-        if (GZIP.equalsIgnoreCase(contentEncoding) || X_GZIP.equalsIgnoreCase(contentEncoding)) {
+    protected EmbeddedChannel newContentCompressor(ByteString contentEncoding) throws Http2Exception {
+        if (GZIP.equals(contentEncoding) || X_GZIP.equals(contentEncoding)) {
             return newCompressionChannel(ZlibWrapper.GZIP);
         }
-        if (DEFLATE.equalsIgnoreCase(contentEncoding) || X_DEFLATE.equalsIgnoreCase(contentEncoding)) {
+        if (DEFLATE.equals(contentEncoding) || X_DEFLATE.equals(contentEncoding)) {
             return newCompressionChannel(ZlibWrapper.ZLIB);
         }
         // 'identity' or unsupported
@@ -188,7 +188,7 @@ public class CompressorHttp2ConnectionEncoder extends DefaultHttp2ConnectionEnco
      * @return the expected content encoding of the new content.
      * @throws Http2Exception if the {@code contentEncoding} is not supported and warrants an exception
      */
-    protected AsciiString getTargetContentEncoding(AsciiString contentEncoding) throws Http2Exception {
+    protected ByteString getTargetContentEncoding(ByteString contentEncoding) throws Http2Exception {
         return contentEncoding;
     }
 
@@ -215,18 +215,19 @@ public class CompressorHttp2ConnectionEncoder extends DefaultHttp2ConnectionEnco
             return;
         }
 
-        EmbeddedChannel compressor = stream.compressor();
+        EmbeddedChannel compressor = stream.getProperty(propertyKey);
         if (compressor == null) {
             if (!endOfStream) {
-                AsciiString encoding = headers.get(CONTENT_ENCODING);
+                ByteString encoding = headers.get(CONTENT_ENCODING);
                 if (encoding == null) {
                     encoding = IDENTITY;
                 }
                 try {
                     compressor = newContentCompressor(encoding);
                     if (compressor != null) {
-                        AsciiString targetContentEncoding = getTargetContentEncoding(encoding);
-                        if (IDENTITY.equalsIgnoreCase(targetContentEncoding)) {
+                        stream.setProperty(propertyKey, compressor);
+                        ByteString targetContentEncoding = getTargetContentEncoding(encoding);
+                        if (IDENTITY.equals(targetContentEncoding)) {
                             headers.remove(CONTENT_ENCODING);
                         } else {
                             headers.set(CONTENT_ENCODING, targetContentEncoding);
@@ -254,17 +255,18 @@ public class CompressorHttp2ConnectionEncoder extends DefaultHttp2ConnectionEnco
      * @param stream The stream for which {@code compressor} is the compressor for
      * @param compressor The compressor for {@code stream}
      */
-    private static void cleanup(Http2Stream stream, EmbeddedChannel compressor) {
+    void cleanup(Http2Stream stream, EmbeddedChannel compressor) {
         if (compressor.finish()) {
             for (;;) {
                 final ByteBuf buf = compressor.readOutbound();
                 if (buf == null) {
                     break;
                 }
+
                 buf.release();
             }
         }
-        stream.compressor(null);
+        stream.removeProperty(propertyKey);
     }
 
     /**

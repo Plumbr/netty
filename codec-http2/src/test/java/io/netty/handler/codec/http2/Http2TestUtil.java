@@ -17,8 +17,9 @@ package io.netty.handler.codec.http2;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.AsciiString;
 import io.netty.handler.codec.ByteToMessageDecoder;
+import io.netty.util.AsciiString;
+import io.netty.util.ByteString;
 
 import java.util.List;
 import java.util.Random;
@@ -61,8 +62,8 @@ final class Http2TestUtil {
     /**
      * Converts a byte array into an {@link AsciiString}.
      */
-    public static AsciiString as(byte[] value) {
-        return new AsciiString(value);
+    public static ByteString as(byte[] value) {
+        return new ByteString(value);
     }
 
     /**
@@ -77,7 +78,7 @@ final class Http2TestUtil {
     /**
      * Returns an {@link AsciiString} that wraps a randomly-filled byte array.
      */
-    public static AsciiString randomString() {
+    public static ByteString randomString() {
         return as(randomBytes());
     }
 
@@ -247,7 +248,7 @@ final class Http2TestUtil {
 
                 @Override
                 public void onUnknownFrame(ChannelHandlerContext ctx, byte frameType, int streamId, Http2Flags flags,
-                        ByteBuf payload) {
+                        ByteBuf payload) throws Http2Exception {
                     listener.onUnknownFrame(ctx, frameType, streamId, flags, payload);
                     latch.countDown();
                 }
@@ -262,23 +263,28 @@ final class Http2TestUtil {
     static class FrameCountDown implements Http2FrameListener {
         private final Http2FrameListener listener;
         private final CountDownLatch messageLatch;
+        private final CountDownLatch settingsAckLatch;
         private final CountDownLatch dataLatch;
         private final CountDownLatch trailersLatch;
+        private final CountDownLatch goAwayLatch;
 
-        FrameCountDown(Http2FrameListener listener, CountDownLatch messageLatch) {
-            this(listener, messageLatch, null);
+        FrameCountDown(Http2FrameListener listener, CountDownLatch settingsAckLatch, CountDownLatch messageLatch) {
+            this(listener, settingsAckLatch, messageLatch, null, null);
         }
 
-        FrameCountDown(Http2FrameListener listener, CountDownLatch messageLatch, CountDownLatch dataLatch) {
-            this(listener, messageLatch, dataLatch, null);
-        }
-
-        FrameCountDown(Http2FrameListener listener, CountDownLatch messageLatch,
+        FrameCountDown(Http2FrameListener listener, CountDownLatch settingsAckLatch, CountDownLatch messageLatch,
                 CountDownLatch dataLatch, CountDownLatch trailersLatch) {
+            this(listener, settingsAckLatch, messageLatch, dataLatch, trailersLatch, messageLatch);
+        }
+
+        FrameCountDown(Http2FrameListener listener, CountDownLatch settingsAckLatch, CountDownLatch messageLatch,
+                CountDownLatch dataLatch, CountDownLatch trailersLatch, CountDownLatch goAwayLatch) {
             this.listener = listener;
             this.messageLatch = messageLatch;
+            this.settingsAckLatch = settingsAckLatch;
             this.dataLatch = dataLatch;
             this.trailersLatch = trailersLatch;
+            this.goAwayLatch = goAwayLatch;
         }
 
         @Override
@@ -331,7 +337,7 @@ final class Http2TestUtil {
         @Override
         public void onSettingsAckRead(ChannelHandlerContext ctx) throws Http2Exception {
             listener.onSettingsAckRead(ctx);
-            messageLatch.countDown();
+            settingsAckLatch.countDown();
         }
 
         @Override
@@ -363,7 +369,7 @@ final class Http2TestUtil {
         public void onGoAwayRead(ChannelHandlerContext ctx, int lastStreamId, long errorCode, ByteBuf debugData)
                 throws Http2Exception {
             listener.onGoAwayRead(ctx, lastStreamId, errorCode, debugData);
-            messageLatch.countDown();
+            goAwayLatch.countDown();
         }
 
         @Override
@@ -375,7 +381,7 @@ final class Http2TestUtil {
 
         @Override
         public void onUnknownFrame(ChannelHandlerContext ctx, byte frameType, int streamId, Http2Flags flags,
-                ByteBuf payload) {
+                ByteBuf payload) throws Http2Exception {
             listener.onUnknownFrame(ctx, frameType, streamId, flags, payload);
             messageLatch.countDown();
         }

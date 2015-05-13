@@ -15,12 +15,15 @@
  */
 package io.netty.handler.codec.rtsp;
 
+import static io.netty.handler.codec.http.HttpConstants.CR;
+import static io.netty.handler.codec.http.HttpConstants.LF;
+import static io.netty.handler.codec.http.HttpConstants.SP;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.util.AsciiString;
 import io.netty.util.CharsetUtil;
-
-import static io.netty.handler.codec.http.HttpConstants.*;
 
 /**
  * Encodes an RTSP request represented in {@link FullHttpRequest} into
@@ -37,11 +40,15 @@ public class RtspRequestEncoder extends RtspObjectEncoder<HttpRequest> {
 
     @Override
     protected void encodeInitialLine(ByteBuf buf, HttpRequest request) throws Exception {
-        buf.writeBytes(request.method().toString().getBytes(CharsetUtil.US_ASCII));
+        AsciiString method = request.method().name();
+        ByteBufUtil.copy(method, method.arrayOffset(), buf, method.length());
         buf.writeByte(SP);
+
         buf.writeBytes(request.uri().getBytes(CharsetUtil.UTF_8));
         buf.writeByte(SP);
-        buf.writeBytes(request.protocolVersion().toString().getBytes(CharsetUtil.US_ASCII));
+
+        AsciiString version = request.protocolVersion().text();
+        ByteBufUtil.copy(version, version.arrayOffset(), buf, version.length());
         buf.writeBytes(CRLF);
     }
 }

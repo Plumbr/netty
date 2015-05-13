@@ -21,7 +21,10 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.ConcurrentModificationException;
+import java.util.Iterator;
 import java.util.List;
+import java.util.NoSuchElementException;
 
 import static io.netty.buffer.Unpooled.*;
 import static io.netty.util.ReferenceCountUtil.*;
@@ -811,5 +814,128 @@ public abstract class AbstractCompositeByteBufTest extends AbstractByteBufTest {
         cbuf.readByte();
 
         cbuf.discardSomeReadBytes();
+    }
+
+    @Test
+    public void testAddEmptyBufferRelease() {
+        CompositeByteBuf cbuf = compositeBuffer();
+        ByteBuf buf = buffer();
+        assertEquals(1, buf.refCnt());
+        cbuf.addComponent(buf);
+        assertEquals(1, buf.refCnt());
+
+        cbuf.release();
+        assertEquals(0, buf.refCnt());
+    }
+
+    @Test
+    public void testAddEmptyBuffersRelease() {
+        CompositeByteBuf cbuf = compositeBuffer();
+        ByteBuf buf = buffer();
+        ByteBuf buf2 = buffer().writeInt(1);
+        ByteBuf buf3 = buffer();
+
+        assertEquals(1, buf.refCnt());
+        assertEquals(1, buf2.refCnt());
+        assertEquals(1, buf3.refCnt());
+
+        cbuf.addComponents(buf, buf2, buf3);
+        assertEquals(1, buf.refCnt());
+        assertEquals(1, buf2.refCnt());
+        assertEquals(1, buf3.refCnt());
+
+        cbuf.release();
+        assertEquals(0, buf.refCnt());
+        assertEquals(0, buf2.refCnt());
+        assertEquals(0, buf3.refCnt());
+    }
+
+    @Test
+    public void testAddEmptyBufferInMiddle() {
+        CompositeByteBuf cbuf = compositeBuffer();
+        ByteBuf buf1 = buffer().writeByte((byte) 1);
+        cbuf.addComponent(buf1).writerIndex(cbuf.writerIndex() + buf1.readableBytes());
+        ByteBuf buf2 = EMPTY_BUFFER;
+        cbuf.addComponent(buf2).writerIndex(cbuf.writerIndex() + buf2.readableBytes());
+        ByteBuf buf3 = buffer().writeByte((byte) 2);
+        cbuf.addComponent(buf3).writerIndex(cbuf.writerIndex() + buf3.readableBytes());
+
+        assertEquals(2, cbuf.readableBytes());
+        assertEquals((byte) 1, cbuf.readByte());
+        assertEquals((byte) 2, cbuf.readByte());
+
+        assertSame(EMPTY_BUFFER, cbuf.internalComponent(1));
+        assertNotSame(EMPTY_BUFFER, cbuf.internalComponentAtOffset(1));
+        cbuf.release();
+    }
+
+    @Test
+    public void testIterator() {
+        CompositeByteBuf cbuf = compositeBuffer();
+        cbuf.addComponent(EMPTY_BUFFER);
+        cbuf.addComponent(EMPTY_BUFFER);
+
+        Iterator<ByteBuf> it = cbuf.iterator();
+        assertTrue(it.hasNext());
+        assertSame(EMPTY_BUFFER, it.next());
+        assertTrue(it.hasNext());
+        assertSame(EMPTY_BUFFER, it.next());
+        assertFalse(it.hasNext());
+
+        try {
+            it.next();
+            fail();
+        } catch (NoSuchElementException e) {
+            //Expected
+        }
+        cbuf.release();
+    }
+
+    @Test
+    public void testEmptyIterator() {
+        CompositeByteBuf cbuf = compositeBuffer();
+
+        Iterator<ByteBuf> it = cbuf.iterator();
+        assertFalse(it.hasNext());
+
+        try {
+            it.next();
+            fail();
+        } catch (NoSuchElementException e) {
+            //Expected
+        }
+        cbuf.release();
+    }
+
+    @Test(expected = ConcurrentModificationException.class)
+    public void testIteratorConcurrentModificationAdd() {
+        CompositeByteBuf cbuf = compositeBuffer();
+        cbuf.addComponent(EMPTY_BUFFER);
+
+        Iterator<ByteBuf> it = cbuf.iterator();
+        cbuf.addComponent(EMPTY_BUFFER);
+
+        assertTrue(it.hasNext());
+        try {
+            it.next();
+        } finally {
+            cbuf.release();
+        }
+    }
+
+    @Test(expected = ConcurrentModificationException.class)
+    public void testIteratorConcurrentModificationRemove() {
+        CompositeByteBuf cbuf = compositeBuffer();
+        cbuf.addComponent(EMPTY_BUFFER);
+
+        Iterator<ByteBuf> it = cbuf.iterator();
+        cbuf.removeComponent(0);
+
+        assertTrue(it.hasNext());
+        try {
+            it.next();
+        } finally {
+            cbuf.release();
+        }
     }
 }

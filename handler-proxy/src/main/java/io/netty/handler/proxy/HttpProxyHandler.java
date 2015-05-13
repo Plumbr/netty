@@ -20,7 +20,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
-import io.netty.handler.codec.AsciiString;
 import io.netty.handler.codec.base64.Base64;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -31,6 +30,7 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.LastHttpContent;
+import io.netty.util.AsciiString;
 import io.netty.util.CharsetUtil;
 
 import java.net.InetSocketAddress;
@@ -68,7 +68,7 @@ public final class HttpProxyHandler extends ProxyHandler {
         ByteBuf authz = Unpooled.copiedBuffer(username + ':' + password, CharsetUtil.UTF_8);
         ByteBuf authzBase64 = Base64.encode(authz, false);
 
-        authorization = new AsciiString(authzBase64.toString(CharsetUtil.US_ASCII));
+        authorization = new AsciiString("Basic " + authzBase64.toString(CharsetUtil.US_ASCII));
 
         authz.release();
         authzBase64.release();
@@ -131,7 +131,7 @@ public final class HttpProxyHandler extends ProxyHandler {
         }
 
         if (authorization != null) {
-            req.headers().set(HttpHeaderNames.AUTHORIZATION, authorization);
+            req.headers().set(HttpHeaderNames.PROXY_AUTHORIZATION, authorization);
         }
 
         return req;

@@ -32,8 +32,8 @@ import io.netty.handler.ssl.ApplicationProtocolConfig;
 import io.netty.handler.ssl.ApplicationProtocolConfig.Protocol;
 import io.netty.handler.ssl.ApplicationProtocolConfig.SelectedListenerFailureBehavior;
 import io.netty.handler.ssl.ApplicationProtocolConfig.SelectorFailureBehavior;
-import io.netty.handler.ssl.IdentityCipherSuiteFilter;
 import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 
 /**
@@ -57,15 +57,17 @@ public final class SpdyClient {
 
     public static void main(String[] args) throws Exception {
         // Configure SSL.
-        final SslContext sslCtx = SslContext.newClientContext(
-                null, InsecureTrustManagerFactory.INSTANCE, null, IdentityCipherSuiteFilter.INSTANCE,
-                new ApplicationProtocolConfig(
+        final SslContext sslCtx = SslContextBuilder.forClient()
+            .trustManager(InsecureTrustManagerFactory.INSTANCE)
+            .applicationProtocolConfig(new ApplicationProtocolConfig(
                         Protocol.NPN,
-                        SelectorFailureBehavior.FATAL_ALERT,
-                        SelectedListenerFailureBehavior.FATAL_ALERT,
+                        // NO_ADVERTISE is currently the only mode supported by both OpenSsl and JDK providers.
+                        SelectorFailureBehavior.NO_ADVERTISE,
+                        // ACCEPT is currently the only mode supported by both OpenSsl and JDK providers.
+                        SelectedListenerFailureBehavior.ACCEPT,
                         SelectedProtocol.SPDY_3_1.protocolName(),
-                        SelectedProtocol.HTTP_1_1.protocolName()),
-                0, 0);
+                        SelectedProtocol.HTTP_1_1.protocolName()))
+            .build();
 
         HttpResponseClientHandler httpResponseHandler = new HttpResponseClientHandler();
         EventLoopGroup workerGroup = new NioEventLoopGroup();

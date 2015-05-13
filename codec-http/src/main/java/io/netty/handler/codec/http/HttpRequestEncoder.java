@@ -15,10 +15,13 @@
  */
 package io.netty.handler.codec.http;
 
+import static io.netty.handler.codec.http.HttpConstants.CR;
+import static io.netty.handler.codec.http.HttpConstants.LF;
+import static io.netty.handler.codec.http.HttpConstants.SP;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
+import io.netty.util.AsciiString;
 import io.netty.util.CharsetUtil;
-
-import static io.netty.handler.codec.http.HttpConstants.*;
 
 /**
  * Encodes an {@link HttpRequest} or an {@link HttpContent} into
@@ -36,7 +39,8 @@ public class HttpRequestEncoder extends HttpObjectEncoder<HttpRequest> {
 
     @Override
     protected void encodeInitialLine(ByteBuf buf, HttpRequest request) throws Exception {
-        request.method().encode(buf);
+        AsciiString method = request.method().name();
+        ByteBufUtil.copy(method, method.arrayOffset(), buf, method.length());
         buf.writeByte(SP);
 
         // Add / as absolute path if no is present.
@@ -60,9 +64,9 @@ public class HttpRequestEncoder extends HttpObjectEncoder<HttpRequest> {
                     if (uri.lastIndexOf(SLASH, index) <= startIndex) {
                         int len = uri.length();
                         StringBuilder sb = new StringBuilder(len + 1);
-                        sb.append(uri, 0, index);
-                        sb.append(SLASH);
-                        sb.append(uri, index, len);
+                        sb.append(uri, 0, index)
+                          .append(SLASH)
+                          .append(uri, index, len);
                         uri = sb.toString();
                     }
                 }
@@ -70,9 +74,10 @@ public class HttpRequestEncoder extends HttpObjectEncoder<HttpRequest> {
         }
 
         buf.writeBytes(uri.getBytes(CharsetUtil.UTF_8));
-
         buf.writeByte(SP);
-        request.protocolVersion().encode(buf);
+
+        AsciiString version = request.protocolVersion().text();
+        ByteBufUtil.copy(version, version.arrayOffset(), buf, version.length());
         buf.writeBytes(CRLF);
     }
 }

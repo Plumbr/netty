@@ -16,43 +16,27 @@
 
 package io.netty.handler.ssl;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
-import javax.crypto.Cipher;
-import javax.crypto.EncryptedPrivateKeyInfo;
 import javax.crypto.NoSuchPaddingException;
-import javax.crypto.SecretKey;
-import javax.crypto.SecretKeyFactory;
-import javax.crypto.spec.PBEKeySpec;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSessionContext;
-import javax.net.ssl.TrustManagerFactory;
-import javax.security.auth.x500.X500Principal;
 import java.io.File;
 import java.io.IOException;
 import java.security.InvalidAlgorithmParameterException;
-import java.security.InvalidKeyException;
 import java.security.KeyException;
-import java.security.KeyFactory;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
 import java.security.Security;
 import java.security.UnrecoverableKeyException;
-import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -115,18 +99,16 @@ public abstract class JdkSslContext extends SslContext {
                 // XXX: Make sure to sync this list with OpenSslEngineFactory.
                 // GCM (Galois/Counter Mode) requires JDK 8.
                 "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-                "TLS_ECDHE_RSA_WITH_RC4_128_SHA",
                 "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
                 // AES256 requires JCE unlimited strength jurisdiction policy files.
                 "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
                 // GCM (Galois/Counter Mode) requires JDK 8.
                 "TLS_RSA_WITH_AES_128_GCM_SHA256",
-                "SSL_RSA_WITH_RC4_128_SHA",
-                "SSL_RSA_WITH_RC4_128_MD5",
                 "TLS_RSA_WITH_AES_128_CBC_SHA",
                 // AES256 requires JCE unlimited strength jurisdiction policy files.
                 "TLS_RSA_WITH_AES_256_CBC_SHA",
-                "SSL_RSA_WITH_DES_CBC_SHA");
+                "SSL_RSA_WITH_3DES_EDE_CBC_SHA",
+                "SSL_RSA_WITH_RC4_128_SHA");
 
         if (!ciphers.isEmpty()) {
             DEFAULT_CIPHERS = Collections.unmodifiableList(ciphers);
@@ -173,6 +155,7 @@ public abstract class JdkSslContext extends SslContext {
     /**
      * Returns the JDK {@link SSLSessionContext} object held by this context.
      */
+    @Override
     public final SSLSessionContext sessionContext() {
         if (isServer()) {
             return context().getServerSessionContext();
@@ -326,40 +309,8 @@ public abstract class JdkSslContext extends SslContext {
                     throws KeyStoreException, NoSuchAlgorithmException, NoSuchPaddingException,
                     InvalidKeySpecException, InvalidAlgorithmParameterException, IOException,
                     CertificateException, KeyException, UnrecoverableKeyException {
-        KeyStore ks = KeyStore.getInstance("JKS");
-        ks.load(null, null);
-        CertificateFactory cf = CertificateFactory.getInstance("X.509");
-        KeyFactory rsaKF = KeyFactory.getInstance("RSA");
-        KeyFactory dsaKF = KeyFactory.getInstance("DSA");
-
-        ByteBuf encodedKeyBuf = PemReader.readPrivateKey(keyFile);
-        byte[] encodedKey = new byte[encodedKeyBuf.readableBytes()];
-        encodedKeyBuf.readBytes(encodedKey).release();
-
         char[] keyPasswordChars = keyPassword == null ? EmptyArrays.EMPTY_CHARS : keyPassword.toCharArray();
-        PKCS8EncodedKeySpec encodedKeySpec = generateKeySpec(keyPasswordChars, encodedKey);
-
-        PrivateKey key;
-        try {
-            key = rsaKF.generatePrivate(encodedKeySpec);
-        } catch (InvalidKeySpecException ignore) {
-            key = dsaKF.generatePrivate(encodedKeySpec);
-        }
-
-        List<Certificate> certChain = new ArrayList<Certificate>();
-        ByteBuf[] certs = PemReader.readCertificates(certChainFile);
-        try {
-            for (ByteBuf buf: certs) {
-                certChain.add(cf.generateCertificate(new ByteBufInputStream(buf)));
-            }
-        } finally {
-            for (ByteBuf buf: certs) {
-                buf.release();
-            }
-        }
-
-        ks.setKeyEntry("key", key, keyPasswordChars, certChain.toArray(new Certificate[certChain.size()]));
-
+        KeyStore ks = buildKeyStore(certChainFile, keyFile, keyPasswordChars);
         // Set up key manager factory to use our key store
         if (kmf == null) {
             kmf = KeyManagerFactory.getInstance(keyAlgorithm);
@@ -367,75 +318,5 @@ public abstract class JdkSslContext extends SslContext {
         kmf.init(ks, keyPasswordChars);
 
         return kmf;
-    }
-
-    /**
-     * Build a {@link TrustManagerFactory} from a certificate chain file.
-     * @param certChainFile The certificate file to build from.
-     * @param trustManagerFactory The existing {@link TrustManagerFactory} that will be used if not {@code null}.
-     * @return A {@link TrustManagerFactory} which contains the certificates in {@code certChainFile}
-     */
-    protected static TrustManagerFactory buildTrustManagerFactory(File certChainFile,
-            TrustManagerFactory trustManagerFactory)
-                    throws NoSuchAlgorithmException, CertificateException, KeyStoreException, IOException {
-        KeyStore ks = KeyStore.getInstance("JKS");
-        ks.load(null, null);
-        CertificateFactory cf = CertificateFactory.getInstance("X.509");
-
-        ByteBuf[] certs = PemReader.readCertificates(certChainFile);
-        try {
-            for (ByteBuf buf: certs) {
-                X509Certificate cert = (X509Certificate) cf.generateCertificate(new ByteBufInputStream(buf));
-                X500Principal principal = cert.getSubjectX500Principal();
-                ks.setCertificateEntry(principal.getName("RFC2253"), cert);
-            }
-        } finally {
-            for (ByteBuf buf: certs) {
-                buf.release();
-            }
-        }
-
-        // Set up trust manager factory to use our key store.
-        if (trustManagerFactory == null) {
-            trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
-        }
-        trustManagerFactory.init(ks);
-
-        return trustManagerFactory;
-    }
-
-    /**
-     * Generates a key specification for an (encrypted) private key.
-     *
-     * @param password characters, if {@code null} or empty an unencrypted key is assumed
-     * @param key bytes of the DER encoded private key
-     *
-     * @return a key specification
-     *
-     * @throws IOException if parsing {@code key} fails
-     * @throws NoSuchAlgorithmException if the algorithm used to encrypt {@code key} is unkown
-     * @throws NoSuchPaddingException if the padding scheme specified in the decryption algorithm is unkown
-     * @throws InvalidKeySpecException if the decryption key based on {@code password} cannot be generated
-     * @throws InvalidKeyException if the decryption key based on {@code password} cannot be used to decrypt
-     *                             {@code key}
-     * @throws InvalidAlgorithmParameterException if decryption algorithm parameters are somehow faulty
-     */
-    private static PKCS8EncodedKeySpec generateKeySpec(char[] password, byte[] key)
-            throws IOException, NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeySpecException,
-                   InvalidKeyException, InvalidAlgorithmParameterException {
-
-        if (password == null || password.length == 0) {
-            return new PKCS8EncodedKeySpec(key);
-        }
-
-        EncryptedPrivateKeyInfo encryptedPrivateKeyInfo = new EncryptedPrivateKeyInfo(key);
-        SecretKeyFactory keyFactory = SecretKeyFactory.getInstance(encryptedPrivateKeyInfo.getAlgName());
-        PBEKeySpec pbeKeySpec = new PBEKeySpec(password);
-        SecretKey pbeKey = keyFactory.generateSecret(pbeKeySpec);
-
-        Cipher cipher = Cipher.getInstance(encryptedPrivateKeyInfo.getAlgName());
-        cipher.init(Cipher.DECRYPT_MODE, pbeKey, encryptedPrivateKeyInfo.getAlgParameters());
-
-        return encryptedPrivateKeyInfo.getKeySpec(cipher);
     }
 }

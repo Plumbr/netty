@@ -22,8 +22,8 @@ import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.ResourceLeakHint;
 import io.netty.util.concurrent.EventExecutor;
+import io.netty.util.concurrent.FastThreadLocal;
 import io.netty.util.concurrent.PausableEventExecutor;
-import io.netty.util.internal.OneTimeTask;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
 import java.net.SocketAddress;
@@ -81,20 +81,20 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
             MASK_FLUSH;
 
     /**
-     * Cache the result of the costly generation of {@link #skipFlags} in the partitioned synchronized
-     * {@link WeakHashMap}.
+     * Cache the result of the costly generation of {@link #skipFlags} in a thread-local {@link WeakHashMap}.
      */
-    @SuppressWarnings("unchecked")
-    private static final WeakHashMap<Class<?>, Integer>[] skipFlagsCache =
-            new WeakHashMap[Runtime.getRuntime().availableProcessors()];
+    private static final FastThreadLocal<WeakHashMap<Class<?>, Integer>> skipFlagsCache =
+            new FastThreadLocal<WeakHashMap<Class<?>, Integer>>() {
+                @Override
+                protected WeakHashMap<Class<?>, Integer> initialValue() throws Exception {
+                    return new WeakHashMap<Class<?>, Integer>();
+                }
+            };
 
     private static final AtomicReferenceFieldUpdater<AbstractChannelHandlerContext, PausableChannelEventExecutor>
             WRAPPED_EVENTEXECUTOR_UPDATER;
 
     static {
-        for (int i = 0; i < skipFlagsCache.length; i ++) {
-            skipFlagsCache[i] = new WeakHashMap<Class<?>, Integer>();
-        }
         AtomicReferenceFieldUpdater<AbstractChannelHandlerContext, PausableChannelEventExecutor> updater =
                PlatformDependent.newAtomicReferenceFieldUpdater(
                        AbstractChannelHandlerContext.class, "wrappedEventLoop");
@@ -111,18 +111,15 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
      * Otherwise, it delegates to {@link #skipFlags0(Class)} to get it.
      */
     static int skipFlags(ChannelHandler handler) {
-        WeakHashMap<Class<?>, Integer> cache =
-                skipFlagsCache[(int) (Thread.currentThread().getId() % skipFlagsCache.length)];
+        WeakHashMap<Class<?>, Integer> cache = skipFlagsCache.get();
         Class<? extends ChannelHandler> handlerType = handler.getClass();
         int flagsVal;
-        synchronized (cache) {
-            Integer flags = cache.get(handlerType);
-            if (flags != null) {
-                flagsVal = flags;
-            } else {
-                flagsVal = skipFlags0(handlerType);
-                cache.put(handlerType, Integer.valueOf(flagsVal));
-            }
+        Integer flags = cache.get(handlerType);
+        if (flags != null) {
+            flagsVal = flags;
+        } else {
+            flagsVal = skipFlags0(handlerType);
+            cache.put(handlerType, Integer.valueOf(flagsVal));
         }
 
         return flagsVal;
@@ -236,6 +233,7 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
     /**
      * Wrapped {@link EventLoop} and {@link ChannelHandlerInvoker} to support {@link Channel#deregister()}.
      */
+    @SuppressWarnings("UnusedDeclaration")
     private volatile PausableChannelEventExecutor wrappedEventLoop;
 
     AbstractChannelHandlerContext(
@@ -250,35 +248,6 @@ abstract class AbstractChannelHandlerContext implements ChannelHandlerContext, R
         this.name = name;
         this.invoker = invoker;
         this.skipFlags = skipFlags;
-    }
-
-    /** Invocation initiated by {@link DefaultChannelPipeline#teardownAll()}}. */
-    void teardown() {
-        EventExecutor executor = executor();
-        if (executor.inEventLoop()) {
-            teardown0();
-        } else {
-            /**
-             * use unwrap(), because the executor will usually be a {@link PausableEventExecutor}
-             * that might not accept any new tasks.
-             */
-            executor().unwrap().execute(new OneTimeTask() {
-                @Override
-                public void run() {
-                    teardown0();
-                }
-            });
-        }
-    }
-
-    private void teardown0() {
-        AbstractChannelHandlerContext prev = this.prev;
-        if (prev != null) {
-            synchronized (pipeline) {
-                pipeline.remove0(this);
-            }
-            prev.teardown();
-        }
     }
 
     @Override
