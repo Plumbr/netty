@@ -15,15 +15,11 @@
  */
 package io.netty.handler.codec.http;
 
-import io.netty.util.internal.StringUtil;
-
-import java.util.Map.Entry;
-
 /**
  * The default {@link HttpMessage} implementation.
  */
 public abstract class DefaultHttpMessage extends DefaultHttpObject implements HttpMessage {
-
+    private static final int HASH_CODE_PRIME = 31;
     private HttpVersion version;
     private final HttpHeaders headers;
 
@@ -31,18 +27,18 @@ public abstract class DefaultHttpMessage extends DefaultHttpObject implements Ht
      * Creates a new instance.
      */
     protected DefaultHttpMessage(final HttpVersion version) {
-        this(version, true);
+        this(version, true, false);
     }
 
     /**
      * Creates a new instance.
      */
-    protected DefaultHttpMessage(final HttpVersion version, boolean validateHeaders) {
+    protected DefaultHttpMessage(final HttpVersion version, boolean validateHeaders, boolean singleHeaderFields) {
         if (version == null) {
             throw new NullPointerException("version");
         }
         this.version = version;
-        headers = new DefaultHttpHeaders(validateHeaders);
+        headers = new DefaultHttpHeaders(validateHeaders, singleHeaderFields);
     }
 
     @Override
@@ -62,20 +58,25 @@ public abstract class DefaultHttpMessage extends DefaultHttpObject implements Ht
     }
 
     @Override
-    public String toString() {
-        StringBuilder buf = new StringBuilder();
-        buf.append(StringUtil.simpleClassName(this));
-        buf.append("(version: ");
-        buf.append(protocolVersion().text());
-        buf.append(", keepAlive: ");
-        buf.append(HttpHeaderUtil.isKeepAlive(this));
-        buf.append(')');
-        buf.append(StringUtil.NEWLINE);
-        appendHeaders(buf);
+    public int hashCode() {
+        int result = 1;
+        result = HASH_CODE_PRIME * result + headers.hashCode();
+        result = HASH_CODE_PRIME * result + version.hashCode();
+        result = HASH_CODE_PRIME * result + super.hashCode();
+        return result;
+    }
 
-        // Remove the last newline.
-        buf.setLength(buf.length() - StringUtil.NEWLINE.length());
-        return buf.toString();
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof DefaultHttpMessage)) {
+            return false;
+        }
+
+        DefaultHttpMessage other = (DefaultHttpMessage) o;
+
+        return headers().equals(other.headers()) &&
+               protocolVersion().equals(other.protocolVersion()) &&
+               super.equals(o);
     }
 
     @Override
@@ -85,18 +86,5 @@ public abstract class DefaultHttpMessage extends DefaultHttpObject implements Ht
         }
         this.version = version;
         return this;
-    }
-
-    void appendHeaders(StringBuilder buf) {
-        appendHeaders(buf, headers());
-    }
-
-    void appendHeaders(StringBuilder buf, HttpHeaders headers) {
-        for (Entry<String, String> e: headers) {
-            buf.append(e.getKey());
-            buf.append(": ");
-            buf.append(e.getValue());
-            buf.append(StringUtil.NEWLINE);
-        }
     }
 }

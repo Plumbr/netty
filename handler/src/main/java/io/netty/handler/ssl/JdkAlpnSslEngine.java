@@ -20,7 +20,7 @@ import io.netty.handler.ssl.JdkApplicationProtocolNegotiator.ProtocolSelectionLi
 import io.netty.handler.ssl.JdkApplicationProtocolNegotiator.ProtocolSelector;
 import io.netty.util.internal.PlatformDependent;
 
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import javax.net.ssl.SSLEngine;
@@ -44,14 +44,8 @@ final class JdkAlpnSslEngine extends JdkSslEngine {
         }
 
         try {
-            // Try to get the bootstrap class loader.
-            ClassLoader bootloader = ClassLoader.getSystemClassLoader().getParent();
-            if (bootloader == null) {
-                // If failed, use the system class loader,
-                // although it's not perfect to tell if APLN extension has been loaded.
-                bootloader = ClassLoader.getSystemClassLoader();
-            }
-            Class.forName("sun.security.ssl.ALPNExtension", true, bootloader);
+            // Always use bootstrap class loader.
+            Class.forName("sun.security.ssl.ALPNExtension", true, null);
             available = true;
         } catch (Exception ignore) {
             // alpn-boot was not loaded.
@@ -64,7 +58,8 @@ final class JdkAlpnSslEngine extends JdkSslEngine {
 
         if (server) {
             final ProtocolSelector protocolSelector = checkNotNull(applicationNegotiator.protocolSelectorFactory()
-                    .newSelector(this, new HashSet<String>(applicationNegotiator.protocols())), "protocolSelector");
+                    .newSelector(this, new LinkedHashSet<String>(applicationNegotiator.protocols())),
+                    "protocolSelector");
             ALPN.put(engine, new ServerProvider() {
                 @Override
                 public String select(List<String> protocols) {

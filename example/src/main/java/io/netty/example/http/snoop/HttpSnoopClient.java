@@ -20,15 +20,16 @@ import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
-import io.netty.handler.codec.http.ClientCookieEncoder;
-import io.netty.handler.codec.http.DefaultCookie;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.cookie.ClientCookieEncoder;
+import io.netty.handler.codec.http.cookie.DefaultCookie;
 import io.netty.handler.ssl.SslContext;
+import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 
 import java.net.URI;
@@ -63,7 +64,8 @@ public final class HttpSnoopClient {
         final boolean ssl = "https".equalsIgnoreCase(scheme);
         final SslContext sslCtx;
         if (ssl) {
-            sslCtx = SslContext.newClientContext(InsecureTrustManagerFactory.INSTANCE);
+            sslCtx = SslContextBuilder.forClient()
+                .trustManager(InsecureTrustManagerFactory.INSTANCE).build();
         } else {
             sslCtx = null;
         }
@@ -89,7 +91,7 @@ public final class HttpSnoopClient {
             // Set some example cookies.
             request.headers().set(
                     HttpHeaderNames.COOKIE,
-                    ClientCookieEncoder.encode(
+                    ClientCookieEncoder.STRICT.encode(
                             new DefaultCookie("my-cookie", "foo"),
                             new DefaultCookie("another-cookie", "bar")));
 

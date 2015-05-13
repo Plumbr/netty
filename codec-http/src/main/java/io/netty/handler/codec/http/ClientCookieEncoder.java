@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 The Netty Project
+ * Copyright 2014 The Netty Project
  *
  * The Netty Project licenses this file to you under the Apache License,
  * version 2.0 (the "License"); you may not use this file except in compliance
@@ -15,103 +15,72 @@
  */
 package io.netty.handler.codec.http;
 
-import static io.netty.handler.codec.http.CookieEncoderUtil.*;
-
 /**
- * Encodes client-side {@link Cookie}s into an HTTP header value.  This encoder can encode
- * the HTTP cookie version 0, 1, and 2.
+ * A <a href="http://tools.ietf.org/html/rfc6265">RFC6265</a> compliant cookie encoder to be used client side,
+ * so only name=value pairs are sent.
+ *
+ * User-Agents are not supposed to interpret cookies, so, if present, {@link Cookie#rawValue()} will be used.
+ * Otherwise, {@link Cookie#value()} will be used unquoted.
+ *
+ * Note that multiple cookies are supposed to be sent at once in a single "Cookie" header.
+ *
  * <pre>
  * // Example
  * {@link HttpRequest} req = ...;
  * res.setHeader("Cookie", {@link ClientCookieEncoder}.encode("JSESSIONID", "1234"));
  * </pre>
  *
- * @see CookieDecoder
+ * @see ClientCookieDecoder
  */
+@Deprecated
 public final class ClientCookieEncoder {
 
     /**
-     * Encodes the specified cookie into an HTTP header value.
+     * Encodes the specified cookie into a Cookie header value.
+     *
+     * @param name the cookie name
+     * @param value the cookie value
+     * @return a Rfc6265 style Cookie header value
      */
+    @Deprecated
     public static String encode(String name, String value) {
-        return encode(new DefaultCookie(name, value));
+        return io.netty.handler.codec.http.cookie.ClientCookieEncoder.LAX.encode(name, value);
     }
 
+    /**
+     * Encodes the specified cookie into a Cookie header value.
+     *
+     * @param specified the cookie
+     * @return a Rfc6265 style Cookie header value
+     */
+    @Deprecated
     public static String encode(Cookie cookie) {
-        if (cookie == null) {
-            throw new NullPointerException("cookie");
-        }
-
-        StringBuilder buf = stringBuilder();
-        encode(buf, cookie);
-        return stripTrailingSeparator(buf);
+        return io.netty.handler.codec.http.cookie.ClientCookieEncoder.LAX.encode(cookie);
     }
 
+    /**
+     * Encodes the specified cookies into a single Cookie header value.
+     *
+     * @param cookies some cookies
+     * @return a Rfc6265 style Cookie header value, null if no cookies are passed.
+     */
+    @Deprecated
     public static String encode(Cookie... cookies) {
-        if (cookies == null) {
-            throw new NullPointerException("cookies");
-        }
-
-        StringBuilder buf = stringBuilder();
-        for (Cookie c: cookies) {
-            if (c == null) {
-                break;
-            }
-
-            encode(buf, c);
-        }
-        return stripTrailingSeparator(buf);
+        return io.netty.handler.codec.http.cookie.ClientCookieEncoder.LAX.encode(cookies);
     }
 
+    /**
+     * Encodes the specified cookies into a single Cookie header value.
+     *
+     * @param cookies some cookies
+     * @return a Rfc6265 style Cookie header value, null if no cookies are passed.
+     */
+    @Deprecated
     public static String encode(Iterable<Cookie> cookies) {
-        if (cookies == null) {
-            throw new NullPointerException("cookies");
-        }
-
-        StringBuilder buf = stringBuilder();
-        for (Cookie c: cookies) {
-            if (c == null) {
-                break;
-            }
-
-            encode(buf, c);
-        }
-        return stripTrailingSeparator(buf);
-    }
-
-    private static void encode(StringBuilder buf, Cookie c) {
-        if (c.version() >= 1) {
-            add(buf, '$' + CookieHeaderNames.VERSION, 1);
-        }
-
-        add(buf, c.name(), c.value());
-
-        if (c.path() != null) {
-            add(buf, '$' + CookieHeaderNames.PATH, c.path());
-        }
-
-        if (c.domain() != null) {
-            add(buf, '$' + CookieHeaderNames.DOMAIN, c.domain());
-        }
-
-        if (c.version() >= 1) {
-            if (!c.ports().isEmpty()) {
-                buf.append('$');
-                buf.append(CookieHeaderNames.PORT);
-                buf.append((char) HttpConstants.EQUALS);
-                buf.append((char) HttpConstants.DOUBLE_QUOTE);
-                for (int port: c.ports()) {
-                    buf.append(port);
-                    buf.append((char) HttpConstants.COMMA);
-                }
-                buf.setCharAt(buf.length() - 1, (char) HttpConstants.DOUBLE_QUOTE);
-                buf.append((char) HttpConstants.SEMICOLON);
-                buf.append((char) HttpConstants.SP);
-            }
-        }
+        return io.netty.handler.codec.http.cookie.ClientCookieEncoder.LAX.encode(cookies);
     }
 
     private ClientCookieEncoder() {
-        // Unused
+        // unused
     }
 }

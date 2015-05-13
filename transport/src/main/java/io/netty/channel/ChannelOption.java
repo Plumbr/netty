@@ -30,9 +30,10 @@ import java.net.NetworkInterface;
  *
  * @param <T>   the type of the value which is valid for the {@link ChannelOption}
  */
-public final class ChannelOption<T> extends AbstractConstant<ChannelOption<T>> {
+public class ChannelOption<T> extends AbstractConstant<ChannelOption<T>> {
 
     private static final ConstantPool<ChannelOption<Object>> pool = new ConstantPool<ChannelOption<Object>>() {
+        @SuppressWarnings("deprecation")
         @Override
         protected ChannelOption<Object> newConstant(int id, String name) {
             return new ChannelOption<Object>(id, name);
@@ -53,6 +54,22 @@ public final class ChannelOption<T> extends AbstractConstant<ChannelOption<T>> {
     @SuppressWarnings("unchecked")
     public static <T> ChannelOption<T> valueOf(Class<?> firstNameComponent, String secondNameComponent) {
         return (ChannelOption<T>) pool.valueOf(firstNameComponent, secondNameComponent);
+    }
+
+    /**
+     * Returns {@code true} if a {@link ChannelOption} exists for the given {@code name}.
+     */
+    public static boolean exists(String name) {
+        return pool.exists(name);
+    }
+
+    /**
+     * Creates a new {@link ChannelOption} for the given {@param name} or fail with an
+     * {@link IllegalArgumentException} if a {@link ChannelOption} for the given {@param name} exists.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> ChannelOption<T> newInstance(String name) {
+        return (ChannelOption<T>) pool.newInstance(name);
     }
 
     public static final ChannelOption<ByteBufAllocator> ALLOCATOR = valueOf("ALLOCATOR");
@@ -103,6 +120,11 @@ public final class ChannelOption<T> extends AbstractConstant<ChannelOption<T>> {
      */
     private ChannelOption(int id, String name) {
         super(id, name);
+    }
+
+    @Deprecated
+    protected ChannelOption(String name) {
+        this(pool.nextId(), name);
     }
 
     /**

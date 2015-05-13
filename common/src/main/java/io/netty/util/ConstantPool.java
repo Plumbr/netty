@@ -16,6 +16,8 @@
 
 package io.netty.util;
 
+import io.netty.util.internal.ObjectUtil;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -53,25 +55,72 @@ public abstract class ConstantPool<T extends Constant<T>> {
      * @param name the name of the {@link Constant}
      */
     public T valueOf(String name) {
-        if (name == null) {
-            throw new NullPointerException("name");
+        T c;
+
+        synchronized (constants) {
+            if (exists(name)) {
+                c = constants.get(name);
+            } else {
+                c = newInstance0(name);
+            }
         }
+
+        return c;
+    }
+
+    /**
+     * Returns {@code true} if a {@link AttributeKey} exists for the given {@code name}.
+     */
+    public boolean exists(String name) {
+        checkNotNullAndNotEmpty(name);
+        synchronized (constants) {
+            return constants.containsKey(name);
+        }
+    }
+
+    /**
+     * Creates a new {@link Constant} for the given {@param name} or fail with an
+     * {@link IllegalArgumentException} if a {@link Constant} for the given {@param name} exists.
+     */
+    @SuppressWarnings("unchecked")
+    public T newInstance(String name) {
+        if (exists(name)) {
+            throw new IllegalArgumentException(String.format("'%s' is already in use", name));
+        }
+
+        T c = newInstance0(name);
+
+        return c;
+    }
+
+    // Be careful that this dose not check whether the argument is null or empty.
+    private T newInstance0(String name) {
+        synchronized (constants) {
+            T c = newConstant(nextId, name);
+            constants.put(name, c);
+            nextId++;
+            return c;
+        }
+    }
+
+    private String checkNotNullAndNotEmpty(String name) {
+        ObjectUtil.checkNotNull(name, "name");
 
         if (name.isEmpty()) {
             throw new IllegalArgumentException("empty name");
         }
 
-        synchronized (constants) {
-            T c = constants.get(name);
-            if (c == null) {
-                c = newConstant(nextId, name);
-                constants.put(name, c);
-                nextId ++;
-            }
-
-            return c;
-        }
+        return name;
     }
 
     protected abstract T newConstant(int id, String name);
+
+    @Deprecated
+    public final int nextId() {
+        synchronized (constants) {
+            int id = nextId;
+            nextId++;
+            return id;
+        }
+    }
 }

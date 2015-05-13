@@ -16,6 +16,8 @@
 package io.netty.handler.codec;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
+import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -41,12 +43,95 @@ import java.util.List;
  *     }
  * </pre>
  *
+ * <h3>Frame detection</h3>
+ * <p>
+ * Generally frame detection should be handled earlier in the pipeline by adding a
+ * {@link DelimiterBasedFrameDecoder}, {@link FixedLengthFrameDecoder}, {@link LengthFieldBasedFrameDecoder},
+ * or {@link LineBasedFrameDecoder}.
+ * <p>
+ * If a custom frame decoder is required, then one needs to be careful when implementing
+ * one with {@link ByteToMessageDecoder}. Ensure there are enough bytes in the buffer for a
+ * complete frame by checking {@link ByteBuf#readableBytes()}. If there are not enough bytes
+ * for a complete frame, return without modifying the reader index to allow more bytes to arrive.
+ * <p>
+ * To check for complete frames without modifying the reader index, use methods like {@link ByteBuf#getInt(int)}.
+ * One <strong>MUST</strong> use the reader index when using methods like {@link ByteBuf#getInt(int)}.
+ * For example calling <tt>in.getInt(0)</tt> is assuming the frame starts at the beginning of the buffer, which
+ * is not always the case. Use <tt>in.getInt(in.readerIndex())</tt> instead.
+ * <h3>Pitfalls</h3>
+ * <p>
  * Be aware that sub-classes of {@link ByteToMessageDecoder} <strong>MUST NOT</strong>
  * annotated with {@link @Sharable}.
+ * <p>
+ * Some methods such as {@link ByteBuf#readBytes(int)} will cause a memory leak if the returned buffer
+ * is not released or added to the <tt>out</tt> {@link List}. Use derived buffers like {@link ByteBuf#readSlice(int)}
+ * to avoid leaking memory.
  */
 public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter {
 
+    /**
+     * Cumulate {@link ByteBuf}s by merge them into one {@link ByteBuf}'s, using memory copies.
+     */
+    public static final Cumulator MERGE_CUMULATOR = new Cumulator() {
+        @Override
+        public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+            ByteBuf buffer;
+            if (cumulation.writerIndex() > cumulation.maxCapacity() - in.readableBytes()
+                    || cumulation.refCnt() > 1) {
+                // Expand cumulation (by replace it) when either there is not more room in the buffer
+                // or if the refCnt is greater then 1 which may happen when the user use slice().retain() or
+                // duplicate().retain().
+                //
+                // See:
+                // - https://github.com/netty/netty/issues/2327
+                // - https://github.com/netty/netty/issues/1764
+                buffer = expandCumulation(alloc, cumulation, in.readableBytes());
+            } else {
+                buffer = cumulation;
+            }
+            buffer.writeBytes(in);
+            in.release();
+            return buffer;
+        }
+    };
+
+    /**
+     * Cumulate {@link ByteBuf}s by add them to a {@link CompositeByteBuf} and so do no memory copy whenever possible.
+     * Be aware that {@link CompositeByteBuf} use a more complex indexing implementation so depending on your use-case
+     * and the decoder implementation this may be slower then just use the {@link #MERGE_CUMULATOR}.
+     */
+    public static final Cumulator COMPOSITE_CUMULATOR = new Cumulator() {
+        @Override
+        public ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in) {
+            ByteBuf buffer;
+            if (cumulation.refCnt() > 1) {
+                // Expand cumulation (by replace it) when the refCnt is greater then 1 which may happen when the user
+                // use slice().retain() or duplicate().retain().
+                //
+                // See:
+                // - https://github.com/netty/netty/issues/2327
+                // - https://github.com/netty/netty/issues/1764
+                buffer = expandCumulation(alloc, cumulation, in.readableBytes());
+                buffer.writeBytes(in);
+                in.release();
+            } else {
+                CompositeByteBuf composite;
+                if (cumulation instanceof CompositeByteBuf) {
+                    composite = (CompositeByteBuf) cumulation;
+                } else {
+                    int readable = cumulation.readableBytes();
+                    composite = alloc.compositeBuffer();
+                    composite.addComponent(cumulation).writerIndex(readable);
+                }
+                composite.addComponent(in).writerIndex(composite.writerIndex() + in.readableBytes());
+                buffer = composite;
+            }
+            return buffer;
+        }
+    };
+
     ByteBuf cumulation;
+    private Cumulator cumulator = MERGE_CUMULATOR;
     private boolean singleDecode;
     private boolean decodeWasNull;
     private boolean first;
@@ -76,6 +161,16 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     }
 
     /**
+     * Set the {@link Cumulator} to use for cumulate the received {@link ByteBuf}s.
+     */
+    public void setCumulator(Cumulator cumulator) {
+        if (cumulator == null) {
+            throw new NullPointerException("cumulator");
+        }
+        this.cumulator = cumulator;
+    }
+
+    /**
      * Returns the actual number of readable bytes in the internal cumulative
      * buffer of this decoder. You usually do not need to rely on this value
      * to write a decoder. Use it only when you must use it at your own risk.
@@ -102,7 +197,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
     public final void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
         ByteBuf buf = internalBuffer();
         int readable = buf.readableBytes();
-        if (buf.isReadable()) {
+        if (readable > 0) {
             ByteBuf bytes = buf.readBytes(readable);
             buf.release();
             ctx.fireChannelRead(bytes);
@@ -130,19 +225,7 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
                 if (first) {
                     cumulation = data;
                 } else {
-                    if (cumulation.writerIndex() > cumulation.maxCapacity() - data.readableBytes()
-                            || cumulation.refCnt() > 1) {
-                        // Expand cumulation (by replace it) when either there is not more room in the buffer
-                        // or if the refCnt is greater then 1 which may happen when the user use slice().retain() or
-                        // duplicate().retain().
-                        //
-                        // See:
-                        // - https://github.com/netty/netty/issues/2327
-                        // - https://github.com/netty/netty/issues/1764
-                        expandCumulation(ctx, data.readableBytes());
-                    }
-                    cumulation.writeBytes(data);
-                    data.release();
+                    cumulation = cumulator.cumulate(ctx.alloc(), cumulation, data);
                 }
                 callDecode(ctx, cumulation, out);
             } catch (DecoderException e) {
@@ -167,15 +250,19 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
         }
     }
 
-    private void expandCumulation(ChannelHandlerContext ctx, int readable) {
-        ByteBuf oldCumulation = cumulation;
-        cumulation = ctx.alloc().buffer(oldCumulation.readableBytes() + readable);
-        cumulation.writeBytes(oldCumulation);
-        oldCumulation.release();
-    }
-
     @Override
     public void channelReadComplete(ChannelHandlerContext ctx) throws Exception {
+        discardSomeReadBytes();
+        if (decodeWasNull) {
+            decodeWasNull = false;
+            if (!ctx.channel().config().isAutoRead()) {
+                ctx.read();
+            }
+        }
+        ctx.fireChannelReadComplete();
+    }
+
+    protected final void discardSomeReadBytes() {
         if (cumulation != null && !first && cumulation.refCnt() == 1) {
             // discard some bytes if possible to make more room in the
             // buffer but only if the refCnt == 1  as otherwise the user may have
@@ -186,13 +273,6 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
             // - https://github.com/netty/netty/issues/1764
             cumulation.discardSomeReadBytes();
         }
-        if (decodeWasNull) {
-            decodeWasNull = false;
-            if (!ctx.channel().config().isAutoRead()) {
-                ctx.read();
-            }
-        }
-        ctx.fireChannelReadComplete();
     }
 
     @Override
@@ -300,5 +380,25 @@ public abstract class ByteToMessageDecoder extends ChannelInboundHandlerAdapter 
      */
     protected void decodeLast(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
         decode(ctx, in, out);
+    }
+
+    static ByteBuf expandCumulation(ByteBufAllocator alloc, ByteBuf cumulation, int readable) {
+        ByteBuf oldCumulation = cumulation;
+        cumulation = alloc.buffer(oldCumulation.readableBytes() + readable);
+        cumulation.writeBytes(oldCumulation);
+        oldCumulation.release();
+        return cumulation;
+    }
+
+    /**
+     * Cumulate {@link ByteBuf}s.
+     */
+    public interface Cumulator {
+        /**
+         * Cumulate the given {@link ByteBuf}s and return the {@link ByteBuf} that holds the cumulated bytes.
+         * The implementation is responsible to correctly handle the life-cycle of the given {@link ByteBuf}s and so
+         * call {@link ByteBuf#release()} if a {@link ByteBuf} is fully consumed.
+         */
+        ByteBuf cumulate(ByteBufAllocator alloc, ByteBuf cumulation, ByteBuf in);
     }
 }

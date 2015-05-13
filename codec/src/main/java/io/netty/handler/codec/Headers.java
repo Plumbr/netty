@@ -23,7 +23,7 @@ import java.util.Set;
 
 public interface Headers<T> extends Iterable<Map.Entry<T, T>> {
     /**
-     * A visitor that helps reduce GC pressure while iterating over a collection of {@link Headers}.
+     * Provides an abstraction to iterate over elements maintained in the {@link Headers} collection.
      */
     interface EntryVisitor<T> {
         /**
@@ -36,7 +36,7 @@ public interface Headers<T> extends Iterable<Map.Entry<T, T>> {
     }
 
     /**
-     * A visitor that helps reduce GC pressure while iterating over a collection of {@link Headers}.
+     * Provides an abstraction to iterate over elements maintained in the {@link Headers} collection.
      */
     interface NameVisitor<T> {
         /**
@@ -77,6 +77,8 @@ public interface Headers<T> extends Iterable<Map.Entry<T, T>> {
         T convertLong(long value);
 
         long convertToLong(T value);
+
+        T convertTimeMillis(long value);
 
         long convertToTimeMillis(T value);
 
@@ -631,6 +633,15 @@ public interface Headers<T> extends Iterable<Map.Entry<T, T>> {
      *
      * @param name the header name
      * @param value the header value
+     * @return {@code true} if it contains it {@code false} otherwise
+     */
+    boolean containsTimeMillis(T name, long value);
+
+    /**
+     * Returns {@code true} if a header with the name and value exists.
+     *
+     * @param name the header name
+     * @param value the header value
      * @param comparator The comparator to use when comparing {@code name} and {@code value} to entries in this map
      * @return {@code true} if it contains it {@code false} otherwise
      */
@@ -858,6 +869,14 @@ public interface Headers<T> extends Iterable<Map.Entry<T, T>> {
     Headers<T> addDouble(T name, double value);
 
     /**
+     * Add the {@code name} to {@code value}.
+     * @param name The name to modify
+     * @param value The value
+     * @return {@code this}
+     */
+    Headers<T> addTimeMillis(T name, long value);
+
+    /**
      * Adds all header entries of the specified {@code headers}.
      *
      * @return {@code this}
@@ -1035,6 +1054,14 @@ public interface Headers<T> extends Iterable<Map.Entry<T, T>> {
     Headers<T> setDouble(T name, double value);
 
     /**
+     * Set the {@code name} to {@code value}. This will remove all previous values associated with {@code name}.
+     * @param name The name to modify
+     * @param value The value
+     * @return {@code this}
+     */
+    Headers<T> setTimeMillis(T name, long value);
+
+    /**
      * Cleans the current header entries and copies all header entries of the specified {@code headers}.
      *
      * @return {@code this}
@@ -1068,16 +1095,14 @@ public interface Headers<T> extends Iterable<Map.Entry<T, T>> {
     Iterator<Entry<T, T>> iterator();
 
     /**
-     * Provide a means of iterating over elements in this map with low GC
-     *
+     * Provides an abstraction to iterate over elements maintained in the {@link Headers} collection.
      * @param visitor The visitor which will visit each element in this map
      * @return The last entry before iteration stopped or {@code null} if iteration went past the end
      */
     Map.Entry<T, T> forEachEntry(EntryVisitor<T> visitor) throws Exception;
 
     /**
-     * Provide a means of iterating over elements in this map with low GC
-     *
+     * Provides an abstraction to iterate over elements maintained in the {@link Headers} collection.
      * @param visitor The visitor which will visit each element in this map
      * @return The last key before iteration stopped or {@code null} if iteration went past the end
      */

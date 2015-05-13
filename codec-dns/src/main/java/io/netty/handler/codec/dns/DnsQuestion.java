@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 The Netty Project
+ * Copyright 2015 The Netty Project
  *
  * The Netty Project licenses this file to you under the Apache License,
  * version 2.0 (the "License"); you may not use this file except in compliance
@@ -15,58 +15,13 @@
  */
 package io.netty.handler.codec.dns;
 
-import static io.netty.handler.codec.dns.DnsClass.IN;
-
 /**
- * The DNS question class which represents a question being sent to a server via
- * a query, or the question being duplicated and sent back in a response.
- * Usually a message contains a single question, and DNS servers often don't
- * support multiple questions in a single query.
+ * A DNS question.
  */
-public final class DnsQuestion extends DnsEntry {
-
+public interface DnsQuestion extends DnsRecord {
     /**
-     * Constructs a question with the default class IN (Internet).
-     *
-     * @param name
-     *            the domain name being queried i.e. "www.example.com"
-     * @param type
-     *            the question type, which represents the type of
-     *            {@link DnsResource} record that should be returned
+     * An unused property. This method will always return {@code 0}.
      */
-    public DnsQuestion(String name, DnsType type) {
-        this(name, type, IN);
-    }
-
-    /**
-     * Constructs a question with the given class.
-     *
-     * @param name
-     *            the domain name being queried i.e. "www.example.com"
-     * @param type
-     *            the question type, which represents the type of
-     *            {@link DnsResource} record that should be returned
-     * @param qClass
-     *            the class of a DNS record
-     */
-    public DnsQuestion(String name, DnsType type, DnsClass qClass) {
-        super(name, type, qClass);
-
-        if (name.isEmpty()) {
-            throw new IllegalArgumentException("name must not be left blank.");
-        }
-    }
-
     @Override
-    public boolean equals(Object other) {
-        if (!(other instanceof DnsQuestion)) {
-            return false;
-        }
-        return super.equals(other);
-    }
-
-    @Override
-    public int hashCode() {
-        return super.hashCode();
-    }
+    long timeToLive();
 }

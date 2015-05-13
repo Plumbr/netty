@@ -21,7 +21,7 @@ import io.netty.handler.ssl.JdkApplicationProtocolNegotiator.ProtocolSelectionLi
 import io.netty.handler.ssl.JdkApplicationProtocolNegotiator.ProtocolSelector;
 import io.netty.util.internal.PlatformDependent;
 
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import javax.net.ssl.SSLEngine;
@@ -44,14 +44,8 @@ final class JdkNpnSslEngine extends JdkSslEngine {
             return;
         }
         try {
-            // Try to get the bootstrap class loader.
-            ClassLoader bootloader = ClassLoader.getSystemClassLoader().getParent();
-            if (bootloader == null) {
-                // If failed, use the system class loader,
-                // although it's not perfect to tell if NPN extension has been loaded.
-                bootloader = ClassLoader.getSystemClassLoader();
-            }
-            Class.forName("sun.security.ssl.NextProtoNegoExtension", true, bootloader);
+            // Always use bootstrap class loader.
+            Class.forName("sun.security.ssl.NextProtoNegoExtension", true, null);
             available = true;
         } catch (Exception ignore) {
             // npn-boot was not loaded.
@@ -88,7 +82,8 @@ final class JdkNpnSslEngine extends JdkSslEngine {
             });
         } else {
             final ProtocolSelector protocolSelector = checkNotNull(applicationNegotiator.protocolSelectorFactory()
-                    .newSelector(this, new HashSet<String>(applicationNegotiator.protocols())), "protocolSelector");
+                    .newSelector(this, new LinkedHashSet<String>(applicationNegotiator.protocols())),
+                    "protocolSelector");
             NextProtoNego.put(engine, new ClientProvider() {
                 @Override
                 public boolean supports() {

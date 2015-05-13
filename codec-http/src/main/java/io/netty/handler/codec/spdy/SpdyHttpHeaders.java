@@ -15,7 +15,7 @@
  */
 package io.netty.handler.codec.spdy;
 
-import io.netty.handler.codec.AsciiString;
+import io.netty.util.AsciiString;
 
 /**
  * Provides the constants for the header names and the utility methods
@@ -39,10 +39,6 @@ public final class SpdyHttpHeaders {
          * {@code "X-SPDY-Priority"}
          */
         public static final AsciiString PRIORITY = new AsciiString("X-SPDY-Priority");
-        /**
-         * {@code "X-SPDY-URL"}
-         */
-        public static final AsciiString URL = new AsciiString("X-SPDY-URL");
         /**
          * {@code "X-SPDY-Scheme"}
          */

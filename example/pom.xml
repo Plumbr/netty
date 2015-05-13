@@ -21,7 +21,7 @@
   <parent>
     <groupId>io.netty</groupId>
     <artifactId>netty-parent</artifactId>
-    <version>4.1.0.Beta4.Plumbr-SNAPSHOT</version>
+    <version>4.1.0.Beta6.Plumbr-SNAPSHOT</version>
   </parent>
 
   <artifactId>netty-example</artifactId>
@@ -53,6 +53,11 @@
     <dependency>
       <groupId>${project.groupId}</groupId>
       <artifactId>netty-codec-http</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId>netty-codec-http2</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -108,6 +113,11 @@
       <groupId>${project.groupId}</groupId>
       <artifactId>netty-transport-rxtx</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>runtime</scope>
     </dependency>
   </dependencies>
 
