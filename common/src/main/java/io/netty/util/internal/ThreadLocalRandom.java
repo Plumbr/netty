@@ -194,16 +194,16 @@ public final class ThreadLocalRandom extends Random {
             final long next = actualCurrent * 181783497276652981L;
 
             if (seedUniquifier.compareAndSet(current, next)) {
-                if (current == 0 && logger.isDebugEnabled()) {
-                    if (seedGeneratorEndTime != 0) {
-                        logger.debug(String.format(
-                                "-Dio.netty.initialSeedUniquifier: 0x%016x (took %d ms)",
-                                actualCurrent,
-                                TimeUnit.NANOSECONDS.toMillis(seedGeneratorEndTime - seedGeneratorStartTime)));
-                    } else {
-                        logger.debug(String.format("-Dio.netty.initialSeedUniquifier: 0x%016x", actualCurrent));
-                    }
-                }
+//                if (current == 0 && logger.isDebugEnabled()) {
+//                    if (seedGeneratorEndTime != 0) {
+//                        logger.debug(String.format(
+//                                "-Dio.netty.initialSeedUniquifier: 0x%016x (took %d ms)",
+//                                actualCurrent,
+//                                TimeUnit.NANOSECONDS.toMillis(seedGeneratorEndTime - seedGeneratorStartTime)));
+//                    } else {
+//                        logger.debug(String.format("-Dio.netty.initialSeedUniquifier: 0x%016x", actualCurrent));
+//                    }
+//                }
                 return next ^ System.nanoTime();
             }
         }
